@@ -31,6 +31,10 @@ ROBOT_CLASS_MAPPING = {
     "PandaDexRH": FixedBaseRobot,
     "PandaDexLH": FixedBaseRobot,
     "XArm7": FixedBaseRobot,
+    "T1": LeggedRobot,
+    "T1FixedLowerBody": LeggedRobot,
+    "T1ArmsOnly": LeggedRobot,
+    "T1FloatingBody": LeggedRobot,
 }
 
 target_type_mapping = {

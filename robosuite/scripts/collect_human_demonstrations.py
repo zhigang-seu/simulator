@@ -13,12 +13,155 @@ from glob import glob
 
 import h5py
 import numpy as np
-
+import robocasa
 import robosuite as suite
 from robosuite.controllers import load_composite_controller_config
 from robosuite.controllers.composite.composite_controller import WholeBody
 from robosuite.wrappers import DataCollectionWrapper, VisualizationWrapper
+from robosuite.controllers.composite.composite_controller import CompositeController
+from robosuite.controllers.composite import REGISTERED_COMPOSITE_CONTROLLERS_DICT
 
+if "COMPOSITE" not in REGISTERED_COMPOSITE_CONTROLLERS_DICT:
+    REGISTERED_COMPOSITE_CONTROLLERS_DICT["COMPOSITE"] = CompositeController
+
+def convert_to_osc_config(original_config):
+    """
+    (T1 强力操控版 - High Power)
+    
+    解决“按键不动”的核心逻辑：
+    1. kp = 500: 提供巨大的驱动力，克服 XML 里的 damping=5.0
+    2. output_max = 0.2: 放宽速度限制，让它动得更快
+    3. ref_name = "robot0_imu": 确保按 "W" 是向前，而不是向奇怪的方向
+    """
+    print(">>> 正在注入 T1 暴力配置 (强力操控版)...")
+    
+    gripper_config = {
+        "type": "GRIP",
+        "use_action_scaling": False,
+        "interpolation": None,
+        "input_type": "binary",
+    }
+
+    osc_arm_config = {
+        "type": "OSC_POSE",
+        
+        # === 【核心修改 1】马力全开 ===
+        # 既然 XML 里有阻尼(刹车)，我们就必须给大油门！
+        # 原来 150 推不动，现在给 500
+        "kp": 600,  
+        
+        # 保持适当的控制阻尼，防止超调
+        "damping_ratio": 1.0, 
+        
+        "impedance_mode": "fixed",
+        "kp_limits": [0, 1000], "damping_ratio_limits": [0, 10],
+        
+        "pose_error_type": "vector",
+        "input_max": 1, "input_min": -1,
+        
+        # === 【核心修改 2】放宽限速 ===
+        # 原来 0.05 太慢了，改成 0.2，让它能在大阻尼下也能挪动
+        "output_max": [0.2, 0.2, 0.2, 1.0, 1.0, 1.0],
+        "output_min": [-0.2, -0.2, -0.2, -1.0, -1.0, -1.0],
+        
+        "control_delta": True, "uncouple_pos_ori": True,
+        
+        # === 【核心修改 3】使用最直观的胸口参考系 ===
+        # mobilebase0_center 可能不存在或方向不对
+        # robot0_imu 就在胸口，跟着人走，方向最准
+        "ref_name": "robot0_imu", 
+        
+        "gripper": gripper_config,
+        "interpolation": None,
+        "ramp_ratio": 0.2
+    }
+
+    # 身体锁定参数
+    joint_body_config = {def convert_to_joint_action_config(original_config):
+    """
+    (修改版) 将 BASIC 配置转换为 JOINT_POSITION，并增加 right -> right_arm 的别名映射。
+    """
+    new_config = {
+        "type": "COMPOSITE",
+        "interpolation": None,
+        "composite_controller_specific_configs": {}
+    }
+
+    body_parts = original_config.get('body_parts', {})
+
+    for part_name, part_cfg in body_parts.items():
+        
+        # === 修改重点在这里 ===
+        if part_name in ['right', 'left']:
+            print(f"正在转换 {part_name} 为关节角度控制 (并添加 _arm 别名)...")
+            
+            # 1. 生成配置字典
+            joint_config = {
+                "controller_type": "JOINT_POSITION",
+                "type": "JOINT_POSITION",
+                "input_max": 1,
+                "input_min": -1,
+                'input_type': 'absolute',
+                "output_max": 0.5,
+                "output_min": -0.5,
+                "kp": 200,  # 刚度
+                'kv': 200,
+                'velocity_limits': [-1, 1],
+                'kp_limits': [0, 1000],
+                "interpolation": None,
+                "ramp_ratio": 0.2,
+            }
+            if 'gripper' in part_cfg:
+                 joint_config['gripper'] = part_cfg['gripper']
+
+            # 2. 【核心修改】写入字典时，同时写入原名和新名
+            # 写入 'right' (为了解决 KeyError: 'right')
+            new_config["composite_controller_specific_configs"][part_name] = joint_config
+            
+            # 写入 'right_arm' (满足您的改名需求)
+            new_name = f"{part_name}_arm" 
+            new_config["composite_controller_specific_configs"][new_name] = joint_config
+            
+            print(f"  -> 已生成键: '{part_name}' 和 '{new_name}'")
+
+        # 其他部位保持不变
+        elif part_cfg.get('type') == 'JOINT_POSITION':
+            cfg_copy = part_cfg.copy()
+            cfg_copy['controller_type'] = 'JOINT_POSITION'
+
+            new_config["composite_controller_specific_configs"][part_name] = cfg_copy
+            
+        else:
+            cfg_copy = part_cfg.copy()
+            cfg_copy['controller_type'] = part_cfg['type']
+
+            new_config["composite_controller_specific_configs"][part_name] = cfg_copy
+
+    return new_config
+        "type": "JOINT_POSITION",
+        "kp": 500, "damping_ratio": 1,
+        "interpolation": None,
+        "ramp_ratio": 0.2
+    }
+
+    # === 构建配置 ===
+    body_parts_dict = {}
+    
+    body_parts_dict["right"] = osc_arm_config
+    
+    body_parts_dict["left"] = osc_arm_config
+    
+    
+    body_parts_dict["head"] = joint_body_config
+    body_parts_dict["torso"] = joint_body_config
+    body_parts_dict["legs"] = joint_body_config
+
+    new_config = {
+        "type": "COMPOSITE", 
+        "body_parts": body_parts_dict
+    }
+    
+    return new_config
 
 def collect_human_trajectory(env, device, arm, max_fr, goal_update_mode):
     """
@@ -62,10 +205,42 @@ def collect_human_trajectory(env, device, arm, max_fr, goal_update_mode):
         # Get the newest action
         input_ac_dict = device.input2action(goal_update_mode=goal_update_mode)
 
+        
+
         # If action is none, then this a reset so we should break
         if input_ac_dict is None:
             break
 
+        # === 【修复核心】手动构建动作向量 ===
+        # T1 的动作空间是 维的，我们先创建一个全 0 的空动作
+        
+        final_action = np.zeros(26)
+        # 键盘发 'right_delta'，我们把它填进机器人的 'right' (索引 0:6)
+        if 'right_delta' in input_ac_dict:
+            # print(f"DEBUG: 收到右手指令: {input_ac_dict['right_delta']}")  # 调试用，通了后可注释
+            final_action[0:6] = input_ac_dict['right_delta']
+
+        # --- 2. 接上“左手”的线 (如果需要) ---
+        # 键盘发 'left_delta'，填进 'left' (索引 6:12)
+        if 'left_delta' in input_ac_dict:
+            final_action[6:12] = input_ac_dict['left_delta']
+
+        # === 2. 暴力测试 (调试完请注释掉) ===
+        # 强制给右手一个向上的速度！
+        # 如果机器人自己往上飘，说明物理没问题，是按键没反应。
+        # 如果还是纹丝不动，说明 XML 里的 armature 还是太大！
+        #final_action[2] = 0.5  # <--- 取消注释这行来测试
+    
+        #    === 3. 打印调试 ===
+        # 看看按键时有没有数据？
+        if np.any(final_action):
+            print(f"发送指令right: {final_action[0:6]}")
+            print(f"发送指令left: {final_action[6:12]}")
+
+        
+
+        env.step(final_action)
+        env.render()
         from copy import deepcopy
 
         action_dict = deepcopy(input_ac_dict)  # {}
@@ -90,8 +265,7 @@ def collect_human_trajectory(env, device, arm, max_fr, goal_update_mode):
         for gripper_ac in all_prev_gripper_actions[device.active_robot]:
             all_prev_gripper_actions[device.active_robot][gripper_ac] = action_dict[gripper_ac]
 
-        env.step(env_action)
-        env.render()
+        
 
         # Also break if we complete the task
         if task_completion_hold_count == 0:
@@ -291,10 +465,32 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Get controller config
-    controller_config = load_composite_controller_config(
-        controller=args.controller,
-        robot=args.robots[0],
-    )
+    #controller_config = load_composite_controller_config(
+     #   controller=args.controller,
+      #  robot=args.robots[0],
+    #)
+    raw_config = load_composite_controller_config(controller="BASIC", robot=args.robots[0])
+    #controller_config = convert_to_osc_config(raw_config)
+    raw_config_left  = load_composite_controller_config(controller="BASIC", robot=args.robots[0])
+    raw_config_right = load_composite_controller_config(controller="BASIC", robot=args.robots[0])
+    # 生成两份完全独立的 OSC 配置
+    osc_config_left  = convert_to_osc_config(raw_config_left)
+    osc_config_right = convert_to_osc_config(raw_config_right)
+    controller_config = {
+        "type": "COMPOSITE",
+        "body_parts": {
+            # 左手拿左手的配置
+            "left": osc_config_left["body_parts"]["left"],
+            
+            # 右手拿右手的配置 
+            "right": osc_config_right["body_parts"]["right"],
+            
+            # 其他部位 (head, torso, legs) 
+            "head":  osc_config_left["body_parts"]["head"],
+            "torso": osc_config_left["body_parts"]["torso"],
+            "legs":  osc_config_left["body_parts"]["legs"],
+        }
+    }
 
     if controller_config["type"] == "WHOLE_BODY_MINK_IK":
         # mink-speicific import. requires installing mink
@@ -315,6 +511,8 @@ if __name__ == "__main__":
     if "TwoArm" in args.environment:
         config["env_configuration"] = args.config
 
+    
+    print(">>> 当前已注册的复合控制器:", list(REGISTERED_COMPOSITE_CONTROLLERS_DICT.keys()))
     # Create environment
     env = suite.make(
         **config,

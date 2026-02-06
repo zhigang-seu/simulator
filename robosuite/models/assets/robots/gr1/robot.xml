@@ -195,7 +195,7 @@
 															<body name="left_eef" pos="0 0 0" quat="0.707107 0 0 0.707107">
 																<site name="left_eef_site" pos="0 0 0" size="0.01" rgba="1 0.3 0.3 1" group="2" />
 																<body name="left_mount" quat="0 0 1 0" />
-																<body name="left_hand_eefd" pos="0 0 0" />
+																<body name="left_hand_eef" pos="0 0 0" />
 																<camera mode="fixed" name="eye_in_left_hand" pos="-0.05 -0.15 0.0" quat="0.000000 -0.000000 -0.258819 0.965926" fovy="75" />
 															</body>
 														</body>

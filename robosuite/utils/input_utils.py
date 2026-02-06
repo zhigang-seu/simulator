@@ -125,9 +125,15 @@ def choose_robots(exclude_bimanual=False, use_humanoids=False, exclude_single_ar
     if not exclude_bimanual:
         robots.add("Baxter")
         robots.add("GR1ArmsOnly")
+        robots.add("T1ArmsOnly")
         robots.add("Tiago")
+        robots.add("GR1")
+        robots.add("T1")
     if use_humanoids:
         robots.add("GR1ArmsOnly")
+        robots.add("T1ArmsOnly")
+        robots.add("GR1")
+        robots.add("T1")
 
     # Make sure set is deterministically sorted
     robots = sorted(robots)

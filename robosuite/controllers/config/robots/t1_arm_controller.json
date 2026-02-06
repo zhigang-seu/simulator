@@ -1,0 +1,16 @@
+{
+    "type": "OSC_POSE",
+    "pose_error_type": "vector",
+    "input_max": 1,
+    "input_min": -1,
+    "output_max": [0.05, 0.05, 0.05, 0.5, 0.5, 0.5],
+    "output_min": [-0.05, -0.05, -0.05, -0.5, -0.5, -0.5],
+    "kp": 150,
+    "damping_ratio": 1,
+    "impedance_mode": "fixed",
+    "kp_limits": [0, 300],
+    "damping_ratio_limits": [0, 10],
+    "control_delta": true,
+    "uncouple_pos_ori": true,
+    "ref_name": "robot0_Trunk"
+}
