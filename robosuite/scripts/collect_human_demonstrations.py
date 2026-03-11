@@ -77,67 +77,7 @@ def convert_to_osc_config(original_config):
     }
 
     # 身体锁定参数
-    joint_body_config = {def convert_to_joint_action_config(original_config):
-    """
-    (修改版) 将 BASIC 配置转换为 JOINT_POSITION，并增加 right -> right_arm 的别名映射。
-    """
-    new_config = {
-        "type": "COMPOSITE",
-        "interpolation": None,
-        "composite_controller_specific_configs": {}
-    }
-
-    body_parts = original_config.get('body_parts', {})
-
-    for part_name, part_cfg in body_parts.items():
-        
-        # === 修改重点在这里 ===
-        if part_name in ['right', 'left']:
-            print(f"正在转换 {part_name} 为关节角度控制 (并添加 _arm 别名)...")
-            
-            # 1. 生成配置字典
-            joint_config = {
-                "controller_type": "JOINT_POSITION",
-                "type": "JOINT_POSITION",
-                "input_max": 1,
-                "input_min": -1,
-                'input_type': 'absolute',
-                "output_max": 0.5,
-                "output_min": -0.5,
-                "kp": 200,  # 刚度
-                'kv': 200,
-                'velocity_limits': [-1, 1],
-                'kp_limits': [0, 1000],
-                "interpolation": None,
-                "ramp_ratio": 0.2,
-            }
-            if 'gripper' in part_cfg:
-                 joint_config['gripper'] = part_cfg['gripper']
-
-            # 2. 【核心修改】写入字典时，同时写入原名和新名
-            # 写入 'right' (为了解决 KeyError: 'right')
-            new_config["composite_controller_specific_configs"][part_name] = joint_config
-            
-            # 写入 'right_arm' (满足您的改名需求)
-            new_name = f"{part_name}_arm" 
-            new_config["composite_controller_specific_configs"][new_name] = joint_config
-            
-            print(f"  -> 已生成键: '{part_name}' 和 '{new_name}'")
-
-        # 其他部位保持不变
-        elif part_cfg.get('type') == 'JOINT_POSITION':
-            cfg_copy = part_cfg.copy()
-            cfg_copy['controller_type'] = 'JOINT_POSITION'
-
-            new_config["composite_controller_specific_configs"][part_name] = cfg_copy
-            
-        else:
-            cfg_copy = part_cfg.copy()
-            cfg_copy['controller_type'] = part_cfg['type']
-
-            new_config["composite_controller_specific_configs"][part_name] = cfg_copy
-
-    return new_config
+    joint_body_config = {
         "type": "JOINT_POSITION",
         "kp": 500, "damping_ratio": 1,
         "interpolation": None,
@@ -470,27 +410,7 @@ if __name__ == "__main__":
       #  robot=args.robots[0],
     #)
     raw_config = load_composite_controller_config(controller="BASIC", robot=args.robots[0])
-    #controller_config = convert_to_osc_config(raw_config)
-    raw_config_left  = load_composite_controller_config(controller="BASIC", robot=args.robots[0])
-    raw_config_right = load_composite_controller_config(controller="BASIC", robot=args.robots[0])
-    # 生成两份完全独立的 OSC 配置
-    osc_config_left  = convert_to_osc_config(raw_config_left)
-    osc_config_right = convert_to_osc_config(raw_config_right)
-    controller_config = {
-        "type": "COMPOSITE",
-        "body_parts": {
-            # 左手拿左手的配置
-            "left": osc_config_left["body_parts"]["left"],
-            
-            # 右手拿右手的配置 
-            "right": osc_config_right["body_parts"]["right"],
-            
-            # 其他部位 (head, torso, legs) 
-            "head":  osc_config_left["body_parts"]["head"],
-            "torso": osc_config_left["body_parts"]["torso"],
-            "legs":  osc_config_left["body_parts"]["legs"],
-        }
-    }
+    controller_config = convert_to_osc_config(raw_config)
 
     if controller_config["type"] == "WHOLE_BODY_MINK_IK":
         # mink-speicific import. requires installing mink

@@ -8,7 +8,7 @@ class T1(LeggedManipulatorModel):
     T1 Robot Custom Definition
     (Strictly aligned with t1.xml provided by user)
     """
-    arms = ["left", "right"]
+    arms = ["right", "left"]
 
     def __init__(self, idn=0):
         
@@ -16,6 +16,8 @@ class T1(LeggedManipulatorModel):
         print(f"\n\n======== [T1 Debug] 正在加载 XML: {xml_path} ========")
         # 加载 XML
         super().__init__(xml_path_completion("robots/t1/robot.xml"), idn=idn)
+
+        #self._remove_joint_actuation("leg")
         
         # === 移除 FreeJoint，把机器人钉在空中 ===
         self._remove_free_joint()
@@ -33,14 +35,16 @@ class T1(LeggedManipulatorModel):
 
     @property
     def default_controller_config(self):
-        return {
-            "right": "t1_arm_controller",
-            "left": "t1_arm_controller",
-            "head": "t1_body_controller",
-            "torso": "t1_body_controller",
-            "right_leg": "t1_body_controller",
-            "left_leg": "t1_body_controller"
-        }
+        # return {
+        #     # "right": "t1_arm_controller",
+        #     # "left": "t1_arm_controller",
+        #     # "head": "t1_body_controller",
+        #     # "torso": "t1_body_controller",
+        #     # "right_leg": "t1_body_controller",
+        #     # "left_leg": "t1_body_controller"
+
+        # }
+        return "default_t1"
 
     @property
     def init_qpos(self):
@@ -57,11 +61,11 @@ class T1(LeggedManipulatorModel):
         
         # 左臂配置 (Left)
         # 顺序: Pitch, Roll, Elbow_Pitch, Elbow_Yaw, Wrist_Pitch, Wrist_Yaw, Hand_Roll
-        #left_arm_init  = np.array([-1.57, -1.57, 0.0, 0.0, 0.0, 0.0, 0.0])
-        left_arm_init  = np.array([0.45, -1.05, 0.5, -1.5, 0.0, 0.0, 0.0])
+        left_arm_init  = np.array([-1.57, -1.57, 0.0, 0.0, 0.0, 0.0, 0.0])
+        #left_arm_init  = np.array([0.45, -1.05, 0.5, -1.5, 0.0, 0.0, 0.0])
         # 右臂配置 (Right) - 保持对称
-        right_arm_init = np.array([0.45, 1.05, 0.5, 1.5, 0.0, 0.0, 0.0])
-        #right_arm_init = np.array([-1.57, 1.57, 0.0, 0.0, 0.0, 0.0, 0.0])
+        #right_arm_init = np.array([0.45, 1.05, 0.5, 1.5, 0.0, 0.0, 0.0])
+        right_arm_init = np.array([-1.57, 1.57, 0.0, 0.0, 0.0, 0.0, 0.0])
         #right_arm_init = np.array([0, 0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
         # === 赋值 (严格按 XML 顺序) ===
@@ -72,6 +76,17 @@ class T1(LeggedManipulatorModel):
         
         # 3. Right Arm (Index 9-15) -> 填入右臂数据
         init_qpos[9:16] = right_arm_init
+
+        # === Legs (Index 16: ) ===
+        left_leg_init  = np.zeros(6)
+        right_leg_init = np.zeros(6)
+
+        # 轻微弯曲膝盖保持稳定
+        left_leg_init[2]  = 0.4
+        right_leg_init[2] = 0.4
+
+        init_qpos[16:22] = left_leg_init
+        init_qpos[22:28] = right_leg_init
         
         return init_qpos
 
@@ -106,7 +121,33 @@ class T1(LeggedManipulatorModel):
             "left": "left_tip"
         }
 
+   
 
+    @property
+    def _arm_joints(self):
+        # 获取前缀
+        prefix = getattr(self, "naming_prefix", "robot0_")
+        if not isinstance(prefix, str):
+            prefix = "robot0_"
+            
+        # 以字典形式严格绑定左右臂，杜绝错位
+        return {
+            "left": [
+                prefix + "Left_Shoulder_Pitch", prefix + "Left_Shoulder_Roll", 
+                prefix + "Left_Elbow_Pitch", prefix + "Left_Elbow_Yaw", 
+                prefix + "Left_Wrist_Pitch", prefix + "Left_Wrist_Yaw", prefix + "Left_Hand_Roll"
+            ],
+            "right": [
+                prefix + "Right_Shoulder_Pitch", prefix + "Right_Shoulder_Roll", 
+                prefix + "Right_Elbow_Pitch", prefix + "Right_Elbow_Yaw", 
+                prefix + "Right_Wrist_Pitch", prefix + "Right_Wrist_Yaw", prefix + "Right_Hand_Roll"
+            ]
+        }
+
+    @property
+    def arm_joints(self):
+        # 严格按照 self.arms (即 ["left", "right"]) 的顺序生成平铺列表
+        return self._arm_joints["left"] + self._arm_joints["right"]
 
 
     # ----------------------------
